@@ -57,7 +57,7 @@ void Raft::electionThread() {
     }
 }
 
-voud Raft::heartbeatThread() {
+void Raft::heartbeatThread() {
     while (!this->killed()) {
         std::this_thread::sleep_for(
             std::chrono::milliseconds(CommonInterval));
@@ -80,15 +80,15 @@ void Raft::commitThread() {
         this->_mu.lock();
 
         // for snapshot
-        if (this->_lastApplied < this->log.start()) {
-            this->_lastAppliedt = this->log.start();
+        if (this->_lastApplied < this->_log.start()) {
+            this->_lastApplied = this->_log.start();
         }
         
-        while (this->_lastApplied < this->commitIndex) {
+        while (this->_lastApplied < this->_commitIndex) {
             this->_lastApplied++;
             int index = this->_lastApplied;
             CommitMessage msg = CommitMessage(
-                this->log._entries[index - this->log.start()].Data,
+                this->_log._entries[index - this->_log.start()].data(),
                 index
             );
 

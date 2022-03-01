@@ -67,8 +67,6 @@ private:
     // background thread used to update commit index
     void updateCommitIndexThread();
 
-    void startNewElection();
-
     // Lock to protect shared access to this peer's state
     std::mutex _mu;
     // TODO: record RPC end points of all raft peers

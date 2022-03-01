@@ -7,34 +7,34 @@ service RaftRPC {
 }
 
 message Entry {
-    int32 Term = 1;
-    string Data = 2;
+    int32 term = 1;
+    string data = 2;
 }
 
 message AppendEntriesArgs {
-    int32 Term = 1;
-    int32 LeaderID = 2;
-    int32 PrevLogIndex = 3;
-    int32 PrevLogTerm = 4;
-    int32 LeaderCommit = 5;
-    repeated Entry Entries = 6;
+    int32 term = 1;
+    int32 leaderID = 2;
+    int32 prevLogIndex = 3;
+    int32 prevLogTerm = 4;
+    int32 leaderCommit = 5;
+    repeated Entry entries = 6;
 }
 
 message AppendEntriesReply {
-    int32 Term = 1;
-    bool Success = 2;
-    bool Conflict = 3;
-    int32 StartFrom = 4;
+    int32 term = 1;
+    bool success = 2;
+    bool conflict = 3;
+    int32 startFrom = 4;
 }
 
 message RequestVoteArgs {
-    int32 Term = 1;
-    int32 CandidatedID = 2;
-    int32 LastLogIndex = 3;
-    int32 LastLogTerm = 4;
+    int32 term = 1;
+    int32 candidatedID = 2;
+    int32 lastLogIndex = 3;
+    int32 lastLogTerm = 4;
 }
 
 message RequestVoteReply {
-    int32 Term = 1;
-    bool VoteGranted = 2;
+    int32 term = 1;
+    bool voteGranted = 2;
 }

@@ -3,26 +3,27 @@ project(Raft)
 
 include(common.cmake)
 
+set(src_dir ${CMAKE_SOURCE_DIR}/src)
+
+message("${src_dir}")
+
 get_filename_component(rf_proto "src/raft.proto" ABSOLUTE)
 get_filename_component(rf_proto_path "${rf_proto}" PATH)
 
-set(rf_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/raft.pb.cc")
-set(rf_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/raft.pb.h")
-set(rf_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/raft.grpc.pb.cc")
-set(rf_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/raft.grpc.pb.h")
+set(rf_proto_srcs "${src_dir}/raft.pb.cc")
+set(rf_proto_hdrs "${src_dir}/raft.pb.h")
+set(rf_grpc_srcs "${src_dir}/raft.grpc.pb.cc")
+set(rf_grpc_hdrs "${src_dir}/raft.grpc.pb.h")
 
 add_custom_command(
       OUTPUT "${rf_proto_srcs}" "${rf_proto_hdrs}" "${rf_grpc_srcs}" "${rf_grpc_hdrs}"
       COMMAND ${_PROTOBUF_PROTOC}
-      ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
-        --cpp_out "${CMAKE_CURRENT_BINARY_DIR}"
+      ARGS --grpc_out "${src_dir}"
+        --cpp_out "${src_dir}"
         -I "${rf_proto_path}"
         --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
         "${rf_proto}"
       DEPENDS "${rf_proto}")
-
-# Include generated *.pb.h files
-include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 add_library(rf_grpc_proto
   ${rf_grpc_srcs}
