@@ -44,6 +44,11 @@ public:
         return this->_entries[index - this->_index0].term();
     }
 
+    void truncateEnd(int index) {
+        // resize will truncate the rest part
+        this->_entries.resize(index - this->_index0);
+    }
+
     std::vector<Entry> _entries;
     int _index0;
 };

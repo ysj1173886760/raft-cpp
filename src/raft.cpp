@@ -26,8 +26,109 @@ Raft::Raft(const std::vector<std::string> &peer_address, int me) {
     this->_me = me;
 }
 
+// we will handling response when RPC returns, so status code should always be OK
+// unless the package has lost or timeout
 Status Raft::AppendEntries(ServerContext* context, const AppendEntriesArgs* request, AppendEntriesReply* response) {
+    std::lock_guard<std::mutex> guard(this->_mu);
 
+    if (this->_currentTerm > request->term()) {
+        response->set_term(this->_currentTerm);
+        response->set_success(false);
+        return Status::OK;
+    }
+
+    LOG_INFO("[%d] receive AppendEntries from %d term %d currTerm %d prevLogIndex %d prevLogTerm %d",
+        this->_me, request->leaderid(), request->term(), this->_currentTerm, request->prevlogindex(), request->prevlogterm());
+    // reset timer
+    this->_electionTimer = std::chrono::steady_clock::now();
+    this->_leaderID = request->leaderid();
+    this->_currentState = Follower;
+
+    if (request->term() > this->_currentTerm) {
+        this->_currentTerm = request->term();
+        // TODO: persist here
+    }
+
+    response->set_term(this->_currentTerm);
+
+    // if it's the first log, accept anyway
+    // if index of previous entry is larget than current log length, then we fail it
+    if (request->prevlogindex() > this->_log.last()) {
+        // if the last term of current log is not equal to the leader's, then we ask leader to send it from begining
+        // otherwise, we tell the leader where we are
+        if (this->_log.lastTerm() != request->prevlogterm()) {
+            response->set_conflict(true);
+        } else {
+            response->set_startfrom(this->_log.last() + 1);
+            LOG_INFO("[%d] conflict with same term, start from %d", this->_me, response->startfrom());
+        }
+        response->set_success(false);
+        return Status::OK;
+    }
+
+    bool doModified = false;
+    if (request->prevlogindex() < this->_log.start()) {
+        // we can't match prev log index directly, we can try to overwrite directly
+        for (int i = 0; i < request->entries_size(); i++) {
+            int index = i + request->prevlogindex() + 1;
+
+            if (index < this->_log.start()) {
+                continue;
+            }
+
+            if (index <= this->_log.last()) {
+                this->_log._entries[index - this->_log.start()] = request->entries(i);
+                doModified = true;
+            } else {
+                this->_log.append(request->entries(i));
+                doModified = true;
+            }
+        }
+        // fall though
+    } else {
+        // check the prev term
+        if (this->_log.getTerm(request->prevlogindex()) != request->prevlogterm()) {
+            LOG_INFO("[%d] matching failed, current term=%d, expected=%d",
+                this->_me, this->_log.getTerm(request->prevlogindex()), request->prevlogterm());
+
+            response->set_success(false);
+            response->set_conflict(true);
+            return Status::OK;
+        }
+
+        if (request->entries_size() > 0) {
+            for (int i = 0; i < request->entries_size(); i++) {
+                if (request->prevlogindex() + i + 1 <= this->_log.last()) {
+                    if (this->_log.getTerm(request->prevlogindex() + i + 1) != request->entries(i).term()) {
+                        // remove the conflict log
+                        this->_log.truncateEnd(request->prevlogindex() + i + 1);
+                        doModified = true;
+                        LOG_INFO("[%d] truncate the log, currentLength=%d", this->_me, this->_log.start());
+                    } else {
+                        continue;
+                    }
+                }
+                this->_log.append(request->entries(i));
+                doModified = true;
+            }
+        }
+        // fall though
+    }
+
+    // if we do change the log, then do persist
+    if (doModified) {
+        // TODO: persist here
+    }
+
+    if (request->leadercommit() > this->_commitIndex) {
+        this->_commitIndex = std::min(request->leadercommit(), this->_log.last());
+    }
+    if (request->entries_size() > 0) {
+        LOG_INFO("[%d] Successfully append the entry term=%d curLogLength=%d commitIndex=%d",
+            this->_me, this->_currentTerm, this->_log.start(), this->_commitIndex);
+    }
+    response->set_success(true);
+    return Status::OK;
 }
 
 void Raft::singleAppendEntries(int server, int term, bool heartbeat) {
