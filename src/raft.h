@@ -5,33 +5,68 @@
 #include <queue>
 #include <string>
 
+#include "log.h"
 #include "raft.pb.h"
+
+enum State {
+    Leader = 0,
+    Follower,
+    Candidate,
+};
+
+// for election thread
+const int ElectionLowerBound = 1000;
+const int ElectionUpperBound = 1300;
+// for heartbeat thread
+const int HeartbeatInterval = 150;
+// for commit thread and update commit index thread
+const int CommonInterval = 10;
 
 struct CommitMessage {
     std::string data;
     int commitIndex;
-};
 
-class Log {
-public:
-    Log(): 
-        _entries(std::vector<Entry>{}),
-        _index0(0) {}
-
-private:
-    std::vector<Entry> _entries;
-    int _index0;
+    CommitMessage(const std::string &data, int commitIndex):
+        data(data), 
+        commitIndex(commitIndex) {}
 };
 
 typedef std::chrono::time_point<std::chrono::steady_clock> MyTime;
 
 class Raft {
 public:
-    Raft() {
+    // API interface
+    Raft();
 
-    }
+    // the first return value is the index that the command will appear at
+    // if it's ever committed. the second return value is the current
+    // term. the third return value is true if this server believes it is
+    // the leader.
+    //
+    std::tuple<int, int, bool> Start(std::string data);
+
+    void Kill();
+
+    // return currentTerm and whether this server
+    // believes it is the leader.
+    std::tuple<int, bool> GetState();
 
 private:
+    bool killed();
+    void startNewElection();
+    
+    // background thread used to start new election
+    void electionThread();
+    
+    // background thread used to send heartbeat to followers
+    void heartbeatThread();
+
+    // background thread used to commit log to upper services
+    void commitThread();
+
+    // background thread used to update commit index
+    void updateCommitIndexThread();
+
     // Lock to protect shared access to this peer's state
     std::mutex _mu;
     // TODO: record RPC end points of all raft peers
@@ -67,3 +102,4 @@ private:
 
     // TODO: snapshot
 };
+

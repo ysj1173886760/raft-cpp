@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-service Raft {
+service RaftRPC {
     rpc AppendEntries (AppendEntriesArgs) returns (AppendEntriesReply) {}
 
     rpc RequestVote (RequestVoteArgs) returns (RequestVoteReply) {}

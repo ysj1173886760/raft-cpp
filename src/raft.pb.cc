@@ -221,14 +221,14 @@ void AddDescriptorsImpl() {
       "\001(\005\"`\n\017RequestVoteArgs\022\014\n\004Term\030\001 \001(\005\022\024\n\014"
       "CandidatedID\030\002 \001(\005\022\024\n\014LastLogIndex\030\003 \001(\005"
       "\022\023\n\013LastLogTerm\030\004 \001(\005\"5\n\020RequestVoteRepl"
-      "y\022\014\n\004Term\030\001 \001(\005\022\023\n\013VoteGranted\030\002 \001(\0102x\n\004"
-      "Raft\022:\n\rAppendEntries\022\022.AppendEntriesArg"
-      "s\032\023.AppendEntriesReply\"\000\0224\n\013RequestVote\022"
-      "\020.RequestVoteArgs\032\021.RequestVoteReply\"\000b\006"
-      "proto3"
+      "y\022\014\n\004Term\030\001 \001(\005\022\023\n\013VoteGranted\030\002 \001(\0102{\n\007"
+      "RaftRPC\022:\n\rAppendEntries\022\022.AppendEntries"
+      "Args\032\023.AppendEntriesReply\"\000\0224\n\013RequestVo"
+      "te\022\020.RequestVoteArgs\032\021.RequestVoteReply\""
+      "\000b\006proto3"
   };
   ::google::protobuf::DescriptorPool::InternalAddGeneratedFile(
-      descriptor, 566);
+      descriptor, 569);
   ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
     "raft.proto", &protobuf_RegisterTypes);
 }
