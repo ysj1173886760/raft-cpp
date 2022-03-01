@@ -40,6 +40,10 @@ public:
         return this->_entries.back().term();
     }
 
+    inline int getTerm(int index) {
+        return this->_entries[index - this->_index0].term();
+    }
+
     std::vector<Entry> _entries;
     int _index0;
 };

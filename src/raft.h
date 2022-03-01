@@ -81,6 +81,11 @@ private:
     // background thread used to update commit index
     void updateCommitIndexThread();
 
+    // append entries related
+    void singleAppendEntries(int server, int term, bool heartbeat);
+    void startAppendEntries(int term);
+    void startSendHeartbeatPackage(int term);
+
     // election related
     void startNewElection();
     void callRequestVote(int server, int term, int *counter, bool *done, const RequestVoteArgs &args);

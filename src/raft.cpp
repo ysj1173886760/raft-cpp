@@ -30,6 +30,149 @@ Status Raft::AppendEntries(ServerContext* context, const AppendEntriesArgs* requ
 
 }
 
+void Raft::singleAppendEntries(int server, int term, bool heartbeat) {
+    this->_mu.lock();
+
+    // check the assumption that whether we are the leader
+    if (this->_currentTerm != term) {
+        LOG_INFO("[%d] stop sending Entries, currentTerm=%d, expected %d", this->_me, this->_currentTerm, term);
+        this->_mu.unlock();
+        return;
+    }
+
+    int index = this->_nextIndex[server];
+
+    // first check whether we need to send new log
+    if (index > this->_log.last() && !heartbeat) {
+        this->_mu.unlock();
+        return;
+    }
+
+    AppendEntriesArgs args;
+    args.set_term(term);
+    args.set_leaderid(this->_me);
+    args.set_leadercommit(this->_commitIndex);
+
+    if (index <= this->_log.start()) {
+        // just send nothing, we will send the snapshot when handling the reply message
+        args.set_prevlogindex(this->_log.start());
+        args.set_prevlogterm(this->_log._entries[0].term());
+    } else {
+        args.set_prevlogindex(index - 1);
+        args.set_prevlogterm(this->_log.getTerm(index - 1));
+        for (int i = 0; i < this->_log.last() - index + 1; i++) {
+            Entry *entry = args.add_entries();
+            entry->set_data(this->_log._entries[index + i - this->_log.start()].data());
+            entry->set_term(this->_log._entries[index + i - this->_log.start()].term());
+        }
+    }
+
+    LOG_INFO("[%d] AppendEntries to %d term=%d prevLogIndex=%d prevLogTerm=%d commitIndex=%d",
+        this->_me, server, args.term(), args.prevlogindex(), args.prevlogterm(), args.leadercommit());
+
+    this->_mu.unlock();
+
+    AppendEntriesReply reply;
+    ClientContext context;
+
+    Status status = this->_peers[server]->AppendEntries(&context, args, &reply);
+
+    if (!status.ok()) {
+        return;
+    }
+
+
+    std::lock_guard<std::mutex> guard(this->_mu);
+
+    if (reply.term() > term && reply.term() > this->_currentTerm) {
+        this->_currentTerm = reply.term();
+        this->_leaderID = -1;
+        this->_currentState = Follower;
+        // TODO: persist here
+    }
+
+    // check assumption
+    if (this->_currentState != term) {
+        return;
+    }
+
+    if (reply.success()) {
+        if (args.entries_size() > 0) {
+            int l = index + args.entries_size();
+            if (l > this->_nextIndex[server]) {
+                LOG_INFO("[%d] update nextIndex for server %d value=%d previous %d",
+                    this->_me, server, l, this->_nextIndex[server]);
+                this->_nextIndex[server] = l;
+            }
+            if (l - 1 > this->_matchIndex[server]) {
+                LOG_INFO("[%d] update match for server %d value=%d previous %d",
+                    this->_me, server, l - 1, this->_matchIndex[server]);
+                this->_matchIndex[server] = l - 1;
+            }
+        }
+    } else {
+        // find the previous term
+        int next = index - 1;
+        if (reply.conflict()) {
+            for (int i = index - 1; i > this->_log.start(); i--) {
+                if (this->_log.getTerm(i) != this->_log.getTerm(i - 1)) {
+                    next = i;
+                    break;
+                }
+            }
+        } else {
+            next = reply.startfrom();
+        }
+
+        if (this->_nextIndex[server] == index) {
+            LOG_INFO("[%d] update nextIndex for server %d value=%d previous %d",
+                this->_me, server, next, this->_nextIndex[server]);
+            this->_nextIndex[server] = next;
+
+            // send snapshot
+            if (this->_nextIndex[server] <= this->_log.start()) {
+                // TODO: send snapshot here
+            }
+        }
+    }
+
+}
+
+// start to append entries, called in Start
+void Raft::startAppendEntries(int term) {
+    std::lock_guard<std::mutex> guard(this->_mu);
+
+    // update timer
+    this->_heartbeatTimer = std::chrono::steady_clock::now();
+
+    for (int i = 0; i < this->_num; i++) {
+        if (i == this->_me) {
+            continue;
+        }
+
+        std::thread{
+            [this, i, term] (){ 
+                this->singleAppendEntries(i, term, false);
+            }
+        }.detach();
+    }
+}
+
+// send heartbeat package, called in heartbeat thread
+void Raft::startSendHeartbeatPackage(int term) {
+    for (int i = 0; i < this->_num; i++) {
+        if (i == this->_me) {
+            continue;
+        }
+
+        std::thread{
+            [this, i, term] (){ 
+                this->singleAppendEntries(i, term, true);
+            }
+        }.detach();
+    }
+}
+
 Status Raft::RequestVote(ServerContext* context, const RequestVoteArgs *request, RequestVoteReply *response) {
 
 }
@@ -151,7 +294,12 @@ void Raft::electionThread() {
         auto end = std::chrono::steady_clock::now();
         if (end - this->_electionTimer >= interval && 
             this->_currentState != Leader) {
-            // TODO: start a new election
+            // start a new election
+            std::thread{
+                [this] (){ 
+                    this->startNewElection();
+                }
+            }.detach();
             this->_electionTimer = std::chrono::steady_clock::now();
         }
         this->_mu.unlock();
@@ -166,7 +314,18 @@ void Raft::heartbeatThread() {
         auto end = std::chrono::steady_clock::now();
         if (end - this->_heartbeatTimer >= std::chrono::milliseconds(HeartbeatInterval) &&
             this->_currentState == Leader) {
-            // TODO: start new thread to send heartbeat packages
+
+            // the reason i didn't use startAppendEntries here is because
+            // it will update timer when it has acquire the lock, which won't guarantee
+            // we will send heartbeat package in time.
+            // i.e. we thought we've send heartbeat in HeartbeatInterval, but due to lock waiting,
+            // the time may past longer than that.
+            // Just my personal guess, futher experiment is needed
+            std::thread{
+                [this] (){ 
+                    this->startSendHeartbeatPackage(this->_currentTerm);
+                }
+            }.detach();
             this->_heartbeatTimer = std::chrono::steady_clock::now();
         }
         this->_mu.unlock();
@@ -204,8 +363,47 @@ void Raft::commitThread() {
     }
 }
 
+// this thread can be removed and we can try to update commitIndex
+// whenever the matchIndex is updated. 
+// i.e. update commitIndex in reply handler of singleAppendEntries
 void Raft::updateCommitIndexThread() {
     while (!this->killed()) {
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(CommonInterval));
+        
+        this->_mu.lock();
+
+        if (this->_currentState == Leader) {
+            int N = this->_commitIndex + 1;
+            bool shouldExit = N > this->_log.last();
+
+            while (!shouldExit) {
+                int counter = 1;
+                for (int i = 0; i < this->_num; i++) {
+                    if (i == this->_me) {
+                        continue;
+                    }
+                    if (this->_matchIndex[i] >= N) {
+                        counter++;
+                    }
+                }
+                if (counter >= this->getMajority()) {
+                    if (this->_log.getTerm(N) == this->_currentTerm) {
+                        this->_commitIndex = N;
+                        LOG_INFO("[%d] update commit index %d curTerm=%d", 
+                            this->_me, this->_commitIndex, this->_currentTerm);
+                    }
+                } else {
+                    shouldExit = true;
+                }
+
+                if (N > this->_log.last()) {
+                    shouldExit = true;
+                }
+            }
+        }
+
+        this->_mu.unlock();
     }
 }
 
