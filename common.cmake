@@ -77,7 +77,9 @@ elseif(GRPC_FETCHCONTENT)
     # v1.25.0, v1.26.0 etc..
     # For the purpose of testing, we override the tag used to the commit
     # that's currently under test.
-    GIT_TAG        vGRPC_TAG_VERSION_OF_YOUR_CHOICE)
+    # GIT_TAG        vGRPC_TAG_VERSION_OF_YOUR_CHOICE
+    )
+
   set(FETCHCONTENT_QUIET OFF)
   FetchContent_MakeAvailable(grpc)
 
