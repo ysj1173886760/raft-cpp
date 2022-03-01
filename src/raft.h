@@ -14,6 +14,8 @@
 using grpc::ServerContext;
 using grpc::Status;
 
+namespace Raft {
+
 enum State {
     Leader = 0,
     Follower,
@@ -42,7 +44,7 @@ typedef std::chrono::time_point<std::chrono::steady_clock> MyTime;
 class Raft: public RaftRPC::Service {
 public:
     // API interface
-    Raft();
+    Raft(const std::vector<std::string> &peer_address, int me);
 
     virtual ~Raft() {}
 
@@ -66,7 +68,6 @@ public:
 
 private:
     bool killed();
-    void startNewElection();
     
     // background thread used to start new election
     void electionThread();
@@ -80,14 +81,27 @@ private:
     // background thread used to update commit index
     void updateCommitIndexThread();
 
+    // election related
+    void startNewElection();
+    void callRequestVote(int server, int term, int *counter, bool *done, const RequestVoteArgs &args);
+
+    int getMajority();
+
+    // variables
     // Lock to protect shared access to this peer's state
     std::mutex _mu;
-    // TODO: record RPC end points of all raft peers
+    
+    // RPC end point
+    std::vector<std::unique_ptr<RaftRPC::Stub>> _peers;
 
     // TODO: Persister
 
     // this peer's index in RPC end points
     int _me;
+
+    // number of peers
+    // this should be deal carefully once we've introduced cluster member changes
+    int _num;
 
     // set by Kill()
     std::atomic<bool> _dead;
@@ -116,3 +130,4 @@ private:
     // TODO: snapshot
 };
 
+}

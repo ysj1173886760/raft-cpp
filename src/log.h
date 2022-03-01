@@ -2,6 +2,7 @@
 
 #include "raft.pb.h"
 
+namespace Raft {
 class Log {
 public:
     Log(): 
@@ -35,6 +36,12 @@ public:
         return this->_entries.back();
     }
 
+    inline int lastTerm() {
+        return this->_entries.back().term();
+    }
+
     std::vector<Entry> _entries;
     int _index0;
 };
+
+}
