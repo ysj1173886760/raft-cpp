@@ -6,7 +6,13 @@
 #include <string>
 
 #include "log.h"
-#include "raft.pb.h"
+#include "raft.grpc.pb.h"
+
+#include <grpc/grpc.h>
+#include <grpcpp/server_context.h>
+
+using grpc::ServerContext;
+using grpc::Status;
 
 enum State {
     Leader = 0,
@@ -33,23 +39,30 @@ struct CommitMessage {
 
 typedef std::chrono::time_point<std::chrono::steady_clock> MyTime;
 
-class Raft {
+class Raft: public RaftRPC::Service {
 public:
     // API interface
     Raft();
+
+    virtual ~Raft() {}
 
     // the first return value is the index that the command will appear at
     // if it's ever committed. the second return value is the current
     // term. the third return value is true if this server believes it is
     // the leader.
-    //
     std::tuple<int, int, bool> Start(std::string data);
 
     void Kill();
 
     // return currentTerm and whether this server
     // believes it is the leader.
+
     std::tuple<int, bool> GetState();
+
+    // RPC call
+
+    Status AppendEntries(ServerContext* context, const AppendEntriesArgs* request, AppendEntriesReply* response);
+    Status RequestVote(ServerContext* context, const RequestVoteArgs *request, RequestVoteReply *response);
 
 private:
     bool killed();

@@ -1,10 +1,24 @@
 #include "raft.h"
+#include "raft.grpc.pb.h"
 
 #include <chrono>
 #include <thread>
 #include <random>
+#include <grpc/grpc.h>
+#include <grpcpp/server_context.h>
+
+using grpc::ServerContext;
+using grpc::Status;
 
 Raft::Raft() {
+
+}
+
+Status Raft::AppendEntries(ServerContext* context, const AppendEntriesArgs* request, AppendEntriesReply* response) {
+
+}
+
+Status Raft::RequestVote(ServerContext* context, const RequestVoteArgs *request, RequestVoteReply *response) {
 
 }
 
