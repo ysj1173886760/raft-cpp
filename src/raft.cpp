@@ -275,7 +275,66 @@ void Raft::startSendHeartbeatPackage(int term) {
 }
 
 Status Raft::RequestVote(ServerContext* context, const RequestVoteArgs *request, RequestVoteReply *response) {
+    std::lock_guard<std::mutex> guard(this->_mu);
+    LOG_INFO("[%d] get RequestVote RPC from %d currentState=%d term=%d",
+        this->_me, request->candidatedid(), this->_currentState, request->term());
 
+    if (request->term() < this->_currentTerm) {
+        response->set_votegranted(false);
+        response->set_term(this->_currentTerm);
+        return Status::OK;
+    }
+
+    if (request->term() > this->_currentTerm || this->_votedFor == -1) {
+        if (request->term() > this->_currentTerm) {
+            this->_currentTerm = request->term();
+            this->_votedFor = -1;
+            // TODO: persist here
+        }
+        this->_currentState = Follower;
+
+        if (this->_log.last() > 0) {
+            // when follower have the log and the candidate didn't
+            if (request->lastlogterm() == 0) {
+                LOG_INFO("[%d] reject to vote for %d",
+                    this->_me, request->candidatedid());
+                response->set_votegranted(false);
+                response->set_term(this->_currentTerm);
+                return Status::OK;
+            }
+
+            int curTerm = this->_log.lastTerm();
+            // when follower has the newer log
+            if (curTerm > request->lastlogterm()) {
+                LOG_INFO("[%d] reject to vote for %d",
+                    this->_me, request->candidatedid());
+                response->set_votegranted(false);
+                response->set_term(this->_currentTerm);
+                return Status::OK;
+            }
+
+            // otherwise, grant the vote
+            // fall through
+        }
+
+        // update timer only when we grant vote
+        this->_electionTimer = std::chrono::steady_clock::now();
+
+        // if we don't have the log, grant anyway
+        LOG_INFO("[%d] vote for %d",
+            this->_me, request->candidatedid());
+        this->_votedFor = request->candidatedid();
+        // TODO: persist here
+        response->set_term(request->term());
+        response->set_votegranted(true);
+
+        return Status::OK;
+    }
+
+    // otherwise, deny the vote
+    response->set_votegranted(false);
+    response->set_term(this->_currentTerm);
+    return Status::OK;
 }
 
 void Raft::callRequestVote(int server, int term, int *counter, bool *done, const RequestVoteArgs &args) {
